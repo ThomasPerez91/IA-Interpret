@@ -1,0 +1,114 @@
+version: '3.8'
+services:
+  ia_frontend:
+    image: node:22-alpine
+    container_name: ia_frontend
+    working_dir: /app
+    env_file:
+      - ./.env
+    volumes:
+      - ./frontend:/app
+      - ia_frontend_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    command: >
+      sh -c "
+      npm install -g pnpm &&
+      pnpm install &&
+      pnpm run dev -- --host=0.0.0.0 --port=5173docker-compose down
+      "
+  ia_backend:
+    container_name: ia_backend
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+      - ./.env
+    volumes:
+      - ./backend:/app
+      - ia_backend_logs:/app/logs
+      - ${PICTURE_VOLUME}:${PICTURES_REPOSITORY}
+    ports:
+      - "5001:5000"
+    command: >
+      sh -c "
+      pip install -r requirements.txt &&
+      uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
+      "
+
+  ia_worker:
+    container_name: ia_worker
+    build:
+      context: ./backend
+    env_file:
+      - ./backend/.env
+      - ./.env
+    volumes:
+      - ./backend:/app
+      - ${PICTURE_VOLUME}:${PICTURES_REPOSITORY}
+    command: celery -A app.celery_app.celery_app worker --loglevel=INFO
+
+  ia_redis:
+    container_name: ia_redis
+    image: redis:8-alpine
+    volumes:
+      - ia_redis_data:/data
+
+  ia_mongo:
+    container_name: ia_mongo
+    image: mongo:4
+    volumes:
+      - ia_mongo_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d:ro
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME}
+    ports:
+      - "27017:27017"
+
+  ia_flower:
+    image: python:3.11-slim
+    container_name: ia_flower
+    env_file:
+      - ./.env
+      - ./backend/.env
+    volumes:
+      - ./backend:/app
+    working_dir: /app
+    depends_on:
+      - ia_redis
+    ports:
+      - "5555:5555"
+    command: >
+      sh -c "
+        pip install --no-cache-dir -r requirements.txt flower &&
+        celery -A app.tasks flower \
+          --port=5555 \
+          --broker=${REDIS_URL} \
+          --url_prefix=/flower \
+          --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD}
+      "
+
+  ia_hadoop:
+    image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
+    container_name: ia_hadoop
+    environment:
+      - CLUSTER_NAME=ia_hadoop
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+
+  ia_spark:
+    image: bitnami/spark:latest
+    container_name: ia_spark
+    environment:
+      - SPARK_MODE=master
+    ports:
+      - "8080:8080"
+
+volumes:
+  ia_redis_data:
+  ia_mongo_data:
+  ia_backend_logs:
+  ia_frontend_node_modules:
