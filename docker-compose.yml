@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   ia_frontend:
     image: node:22-alpine
@@ -13,10 +12,13 @@ services:
       - "5173:5173"
     command: >
       sh -c "
-      npm install -g pnpm &&
-      pnpm install &&
-      pnpm run dev -- --host=0.0.0.0 --port=5173docker-compose down
+        npm install -g pnpm &&
+        pnpm install &&
+        pnpm run dev -- --host=0.0.0.0 --port=5173
       "
+    networks:
+      - ia_network
+
   ia_backend:
     container_name: ia_backend
     build:
@@ -27,14 +29,15 @@ services:
     volumes:
       - ./backend:/app
       - ia_backend_logs:/app/logs
-      - ${PICTURE_VOLUME}:${PICTURES_REPOSITORY}
     ports:
       - "5001:5000"
     command: >
       sh -c "
-      pip install -r requirements.txt &&
-      uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
+        pip install -r requirements.txt &&
+        uvicorn app.main:app --host 0.0.0.0 --port 5000 --reload
       "
+    networks:
+      - ia_network
 
   ia_worker:
     container_name: ia_worker
@@ -45,14 +48,17 @@ services:
       - ./.env
     volumes:
       - ./backend:/app
-      - ${PICTURE_VOLUME}:${PICTURES_REPOSITORY}
     command: celery -A app.celery_app.celery_app worker --loglevel=INFO
+    networks:
+      - ia_network
 
   ia_redis:
     container_name: ia_redis
     image: redis:8-alpine
     volumes:
       - ia_redis_data:/data
+    networks:
+      - ia_network
 
   ia_mongo:
     container_name: ia_mongo
@@ -66,6 +72,8 @@ services:
       MONGO_INITDB_DATABASE: ${MONGO_DB_NAME}
     ports:
       - "27017:27017"
+    networks:
+      - ia_network
 
   ia_flower:
     image: python:3.11-slim
@@ -82,33 +90,89 @@ services:
       - "5555:5555"
     command: >
       sh -c "
-        pip install --no-cache-dir -r requirements.txt flower &&
+        pip install --no-cache-dir -r requirements.txt &&
+        pip install flower &&
         celery -A app.tasks flower \
           --port=5555 \
           --broker=${REDIS_URL} \
           --url_prefix=/flower \
           --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD}
       "
+    networks:
+      - ia_network
 
-  ia_hadoop:
+  hadoop-namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    container_name: ia_hadoop
+    hostname: hadoop-namenode
+    container_name: hadoop-namenode
+    platform: linux/amd64
     environment:
-      - CLUSTER_NAME=ia_hadoop
+      - CLUSTER_NAME=iahadoopcluster
+      - CORE_CONF_fs_defaultFS=hdfs://hadoop-namenode:9000
+      - HDFS_CONF_dfs_replication=1
+      - HDFS_NAMENODE_HTTP_ADDRESS=hadoop-namenode:9870
+      - HADOOP_NAMENODE_OPTS=-Dhadoop.rpc.socket.factory.class.default=org.apache.hadoop.net.StandardSocketFactory
     ports:
       - "9870:9870"
-      - "9000:9000"
+      - "9001:9000"  # Interne 9000, externe 9001 pour éviter les conflits Mac
+    volumes:
+      - ia_hadoop_namenode:/hadoop/dfs/name
+    networks:
+      - ia_network
 
-  ia_spark:
+  hadoop-datanode:
+    image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
+    hostname: hadoop-datanode
+    container_name: hadoop-datanode
+    platform: linux/amd64
+    environment:
+      - CLUSTER_NAME=iahadoopcluster
+      - CORE_CONF_fs_defaultFS=hdfs://hadoop-namenode:9000
+    depends_on:
+      - hadoop-namenode
+    volumes:
+      - ia_hadoop_datanode:/hadoop/dfs/data
+    networks:
+      - ia_network
+
+  spark_master:
     image: bitnami/spark:latest
-    container_name: ia_spark
+    hostname: sparkmaster
+    container_name: spark_master
     environment:
       - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
     ports:
       - "8080:8080"
+      - "7077:7077"
+    networks:
+      - ia_network
+
+  spark_worker:
+    image: bitnami/spark:latest
+    hostname: sparkworker
+    container_name: spark_worker
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://sparkmaster:7077
+      - SPARK_WORKER_MEMORY=3G
+      - SPARK_WORKER_CORES=2
+    depends_on:
+      - spark_master
+    networks:
+      - ia_network
 
 volumes:
   ia_redis_data:
   ia_mongo_data:
   ia_backend_logs:
   ia_frontend_node_modules:
+  ia_hadoop_namenode:
+  ia_hadoop_datanode:
+
+networks:
+  ia_network:
+    driver: bridge
