@@ -1,4 +1,4 @@
-print('Initializing MongoDB...');
-const dbName = process.env.MONGO_INITDB_DATABASE;
+print("Initializing MongoDB...");
+const dbName = "ia_interpret";
 db = db.getSiblingDB(dbName);
-db.createCollection('USERS');
+db.createCollection("USERS");

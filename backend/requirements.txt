@@ -4,4 +4,7 @@ celery
 redis
 pymongo
 pyspark
+pydantic
+pydantic-settings
+python-dotenv
 
