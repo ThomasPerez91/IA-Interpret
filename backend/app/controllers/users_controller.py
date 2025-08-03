@@ -7,6 +7,7 @@ from bson import ObjectId
 
 from .. import db
 from ..enums.role_enum import Role
+from ..services.encrypt import hash_password
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -52,6 +53,7 @@ def create_user(user: UserCreate):
     now = datetime.utcnow()
     role = Role.ADMIN.value if db.users.count_documents({}) == 0 else Role.USER.value
     user_dict = user.dict()
+    user_dict["password"] = hash_password(user_dict["password"])
     user_dict.update({"role": role, "created_at": now, "updated_at": now})
     result = db.users.insert_one(user_dict)
     created_user = db.users.find_one({"_id": result.inserted_id})
@@ -86,6 +88,9 @@ def update_user(user_id: str, user_update: UserUpdate):
         existing = db.users.find_one({"email": update_data["email"], "_id": {"$ne": ObjectId(user_id)}})
         if existing:
             raise HTTPException(status_code=400, detail="Email already registered")
+
+    if "password" in update_data:
+        update_data["password"] = hash_password(update_data["password"])
 
     update_data["updated_at"] = datetime.utcnow()
     db.users.update_one({"_id": ObjectId(user_id)}, {"$set": update_data})
