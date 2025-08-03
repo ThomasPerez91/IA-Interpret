@@ -8,4 +8,6 @@ pydantic
 pydantic-settings
 python-dotenv
 
+bcrypt
+
 email-validator
