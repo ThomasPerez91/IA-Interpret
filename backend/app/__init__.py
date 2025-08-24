@@ -1,4 +1,3 @@
-
 from pymongo import MongoClient  # type: ignore
 from .config import settings
 
