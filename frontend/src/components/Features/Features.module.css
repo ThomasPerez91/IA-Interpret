@@ -1,0 +1,105 @@
+.section {
+  padding: clamp(48px, 6vw, 96px) 20px;
+}
+
+.container {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.title {
+  font-size: clamp(1.4rem, 2.6vw, 2.2rem);
+  font-weight: 800;
+  color: #f1f5f9;
+  margin-bottom: 24px;
+}
+
+.grid {
+  display: grid;
+  gap: 28px;
+}
+
+.item {
+  display: grid;
+  gap: 22px;
+  grid-template-columns: 1.1fr 0.9fr;
+  align-items: center;
+  padding: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 16px;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.02),
+    rgba(255, 255, 255, 0.01)
+  );
+}
+
+.reverse {
+  grid-template-columns: 0.9fr 1.1fr;
+}
+
+@media (max-width: 900px) {
+  .item,
+  .reverse {
+    grid-template-columns: 1fr;
+  }
+}
+
+.text h3 {
+  color: #e2e8f0;
+  margin: 0 0 8px 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.text p {
+  color: #cbd5e1;
+  line-height: 1.6;
+}
+
+.visual {
+  display: grid;
+  place-items: center;
+}
+
+.illusOne,
+.illusTwo,
+.illusThree {
+  inline-size: min(520px, 100%);
+  block-size: 240px;
+  border-radius: 14px;
+  background: conic-gradient(
+    from 210deg,
+    rgba(99, 102, 241, 0.25),
+    rgba(16, 185, 129, 0.25),
+    rgba(99, 102, 241, 0.25)
+  );
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  position: relative;
+  overflow: hidden;
+}
+
+.illusOne::after,
+.illusTwo::after,
+.illusThree::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(
+      200px 120px at 20% 20%,
+      rgba(99, 102, 241, 0.35),
+      transparent
+    ),
+    radial-gradient(
+      220px 140px at 80% 70%,
+      rgba(16, 185, 129, 0.35),
+      transparent
+    ),
+    radial-gradient(
+      140px 90px at 60% 15%,
+      rgba(14, 165, 233, 0.35),
+      transparent
+    );
+  mix-blend-mode: screen;
+  opacity: 0.9;
+}

@@ -1,0 +1,36 @@
+.wrap {
+  padding: 28px 20px 60px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.head h1 {
+  margin: 0;
+  color: #f1f5f9;
+  font-size: 1.6rem;
+}
+
+.logout {
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid rgba(148,163,184,0.28);
+  background: rgba(255,255,255,0.03);
+  color: #e5e7eb;
+  cursor: pointer;
+}
+
+.card {
+  border: 1px solid rgba(148,163,184,0.18);
+  background: rgba(255,255,255,0.02);
+  border-radius: 16px;
+  padding: 18px;
+  color: #cbd5e1;
+}

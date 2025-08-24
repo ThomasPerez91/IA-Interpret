@@ -1,35 +1,67 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import styles from "./App.module.css";
+import { Routes, Route } from "react-router-dom";
 
-function App() {
-  const [count, setCount] = useState(0)
+import { Hero } from "./components/Hero/Hero";
+import { Features } from "./components/Features/Features";
 
+import { Login } from "./auth/Login";
+import { Register } from "./auth/Register";
+import { ProtectedRoute } from "./auth/ProtectedRoute";
+
+import { Dashboard } from "./pages/Dashboard";
+import { Datasets } from "./pages/Datasets";
+import { Models } from "./pages/Models";
+import { Analyses } from "./pages/Analyses";
+
+import { PublicLayout } from "./layouts/PublicLayout";
+import { DashboardLayout } from "./layouts/DashboardLayout";
+
+function Home() {
   return (
     <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
+      <Hero />
+      <Features />
     </>
-  )
+  );
 }
 
-export default App
+function App() {
+  return (
+    <div className={styles.app}>
+      <main>
+        <Routes>
+          {/* Routes publiques avec la HomeNavbar */}
+          <Route element={<PublicLayout />}>
+            <Route index element={<Home />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+          </Route>
+
+          {/* Espace Dashboard protégé, avec sa DashboardNavbar */}
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout />
+              </ProtectedRoute>
+            }
+          >
+            <Route index element={<Dashboard />} />
+            <Route path="datasets" element={<Datasets />} />
+            <Route path="models" element={<Models />} />
+            <Route path="analyses" element={<Analyses />} />
+          </Route>
+        </Routes>
+      </main>
+
+      <footer className={styles.footer}>
+        <p>
+          © {new Date().getFullYear()} IA Interpret — Comprendre et exploiter
+          vos données.
+        </p>
+      </footer>
+    </div>
+  );
+}
+
+export default App;
