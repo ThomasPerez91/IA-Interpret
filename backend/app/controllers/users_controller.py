@@ -1,13 +1,12 @@
 from typing import List, Optional
 from datetime import datetime
-
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, EmailStr
-from bson import ObjectId
-
+from fastapi import APIRouter, HTTPException, Depends  # type: ignore
+from pydantic import BaseModel, EmailStr  # type: ignore
+from bson import ObjectId  # type: ignore
 from .. import db
 from ..enums.role_enum import Role
 from ..services.encrypt import hash_password
+from .auth_controller import get_current_user  # dépendance auth
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -47,11 +46,13 @@ def _user_helper(user: dict) -> UserOut:
 
 @router.post("/", response_model=UserOut)
 def create_user(user: UserCreate):
+    """Inscription (publique)"""
     if db.users.find_one({"email": user.email}):
         raise HTTPException(status_code=400, detail="Email already registered")
 
     now = datetime.utcnow()
-    role = Role.ADMIN.value if db.users.count_documents({}) == 0 else Role.USER.value
+    role = Role.ADMIN.value if db.users.count_documents(
+        {}) == 0 else Role.USER.value
     user_dict = user.dict()
     user_dict["password"] = hash_password(user_dict["password"])
     user_dict.update({"role": role, "created_at": now, "updated_at": now})
@@ -61,33 +62,44 @@ def create_user(user: UserCreate):
 
 
 @router.get("/", response_model=List[UserOut])
-def list_users():
-    users = [
-        _user_helper(u)
-        for u in db.users.find()
-    ]
-    return users
+def list_users(current_user: dict = Depends(get_current_user)):
+    """Lister tous les utilisateurs (admin seulement)"""
+    if current_user["role"] != Role.ADMIN.value:
+        raise HTTPException(status_code=403, detail="Not authorized")
+    return [_user_helper(u) for u in db.users.find()]
 
 
 @router.get("/{user_id}", response_model=UserOut)
-def get_user(user_id: str):
+def get_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Voir un utilisateur (soi-même ou admin)"""
     user = db.users.find_one({"_id": ObjectId(user_id)})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+
+    if str(user["_id"]) != str(current_user["_id"]) and current_user["role"] != Role.ADMIN.value:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     return _user_helper(user)
 
 
 @router.put("/{user_id}", response_model=UserOut)
-def update_user(user_id: str, user_update: UserUpdate):
+def update_user(user_id: str, user_update: UserUpdate, current_user: dict = Depends(get_current_user)):
+    """Mettre à jour un utilisateur (soi-même ou admin)"""
     user = db.users.find_one({"_id": ObjectId(user_id)})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
-    update_data = {k: v for k, v in user_update.dict(exclude_unset=True).items()}
+    if str(user["_id"]) != str(current_user["_id"]) and current_user["role"] != Role.ADMIN.value:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    update_data = {k: v for k, v in user_update.dict(
+        exclude_unset=True).items()}
     if "email" in update_data:
-        existing = db.users.find_one({"email": update_data["email"], "_id": {"$ne": ObjectId(user_id)}})
+        existing = db.users.find_one(
+            {"email": update_data["email"], "_id": {"$ne": ObjectId(user_id)}})
         if existing:
-            raise HTTPException(status_code=400, detail="Email already registered")
+            raise HTTPException(
+                status_code=400, detail="Email already registered")
 
     if "password" in update_data:
         update_data["password"] = hash_password(update_data["password"])
@@ -99,7 +111,15 @@ def update_user(user_id: str, user_update: UserUpdate):
 
 
 @router.delete("/{user_id}")
-def delete_user(user_id: str):
+def delete_user(user_id: str, current_user: dict = Depends(get_current_user)):
+    """Supprimer un utilisateur (soi-même ou admin)"""
+    user = db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if str(user["_id"]) != str(current_user["_id"]) and current_user["role"] != Role.ADMIN.value:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
     result = db.users.delete_one({"_id": ObjectId(user_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
