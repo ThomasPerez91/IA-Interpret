@@ -1,32 +1,34 @@
-FROM python:3.12-slim
+FROM python:3.12-slim-bookworm
 
-# Répertoire de travail
 WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-# Variables d'environnement Python
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-
-# Installer dépendances système utiles (compilation + curl)
+# Java 17 (ok pour Spark 3.x) + utilitaires
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    curl \
+    openjdk-17-jre-headless curl ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# Installer dépendances Python
+# Définir JAVA_HOME proprement
+RUN JAVA_BIN="$(readlink -f "$(which java)")" \
+    && JAVA_HOME_CALC="$(dirname "$(dirname "$JAVA_BIN")")" \
+    && mkdir -p /usr/lib/jvm \
+    && ln -s "$JAVA_HOME_CALC" /usr/lib/jvm/default-java
+ENV JAVA_HOME=/usr/lib/jvm/default-java
+
+# Dépendances Python
 COPY requirements.txt .
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir hdfs==2.7.3   # ceinture+bretelles
 
-# Copier le code de l'app
+# Code de l'app
 COPY app/ ./app
 
-# Créer un utilisateur non-root
-RUN useradd -m appuser
+# Dossier uploads
+RUN mkdir -p /tmp/uploads && \
+    useradd -m appuser && chown -R appuser:appuser /app /tmp/uploads
 USER appuser
 
-# Exposer le port
 EXPOSE 5000
-
-# Lancement avec uvicorn
-ENTRYPOINT ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "5000", "--reload"]

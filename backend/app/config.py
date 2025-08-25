@@ -8,14 +8,13 @@ from pydantic_settings import BaseSettings, SettingsConfigDict  # type: ignore
 
 class Settings(BaseSettings):
     """
-    Configuration de l'application (FastAPI, Celery, DB, etc.)
+    Configuration de l'application (FastAPI, Celery, DB, etc.).
     Les valeurs peuvent être chargées depuis .env et backend/.env (dans cet ordre).
     """
 
     # -------------------------
     # MongoDB (init containers)
     # -------------------------
-    # Variables utilisées par le container mongo à l'initialisation (non requises côté app)
     mongo_initdb_root_username: str | None = Field(
         default=None, env="MONGO_INITDB_ROOT_USERNAME"
     )
@@ -68,9 +67,10 @@ class Settings(BaseSettings):
     # -------------------------
     # CORS
     # -------------------------
-    # Liste séparée par des virgules, ex: "http://localhost:5173,http://localhost:8081"
+    # ⚠️ Aligne avec .env: CORS_ORIGINS_CSV=...
     cors_origins_csv: str = Field(
-        default="http://localhost:5173,http://localhost:8081", env="CORS_ORIGINS"
+        default="http://localhost:5173,http://localhost:8081",
+        env="CORS_ORIGINS_CSV",
     )
 
     # -------------------------
@@ -80,7 +80,20 @@ class Settings(BaseSettings):
     spark_port: int = Field(default=7077, env="SPARK_PORT")
 
     hadoop_host: str = Field(default="hadoop-namenode", env="HADOOP_HOST")
-    hadoop_port: int = Field(default=9870, env="HADOOP_PORT")
+    hadoop_port: int = Field(
+        default=9870, env="HADOOP_PORT")  # WebHDFS/UI du NN
+
+    # Répertoire de base HDFS pour les datasets utilisateurs
+    hdfs_base_dir: str = Field(default="/user_datasets", env="HDFS_BASE_DIR")
+
+    # Utilisateurs HDFS (admin pour créer/chown, user pour écrire ensuite)
+    hdfs_user: str = Field(default="hdfs", env="HDFS_USER")
+    hdfs_admin_user: str = Field(default="root", env="HDFS_ADMIN_USER")
+
+    # Limite de lignes CSV
+    max_csv_rows: int = Field(default=20000, env="MAX_CSV_ROWS")
+
+    upload_tmp_dir: str = Field(default="/tmp/uploads", env="UPLOAD_TMP_DIR")
 
     # -------------------------
     # Pydantic Settings config
@@ -112,7 +125,6 @@ class Settings(BaseSettings):
 
         if user and pwd and dbname:
             return f"mongodb://{user}:{pwd}@{host}:{port}/{dbname}?authSource=admin"
-        # Sinon, pas assez d'infos pour construire proprement
         return None
 
     @property
