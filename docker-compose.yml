@@ -25,7 +25,6 @@ services:
       timeout: 3s
       retries: 5
 
-  # Optionnel : front en mode prod (build Vite + Nginx)
   ia_frontend_prod:
     build:
       context: ./frontend
@@ -34,11 +33,11 @@ services:
     ports:
       - "8081:80"
     networks:
-      - ia_network   # <-- important
+      - ia_network
     restart: unless-stopped
     depends_on:
-      - ia_backend   # <-- pour s'assurer que le backend est up
-
+      ia_backend:
+        condition: service_healthy
 
   ia_backend:
     container_name: ia_backend
@@ -50,6 +49,7 @@ services:
     volumes:
       - ./backend:/app
       - ia_backend_logs:/app/logs
+      - ia_shared_uploads:/tmp/uploads    # ⬅️ volume partagé
     ports:
       - "5001:5000"
     networks:
@@ -75,7 +75,8 @@ services:
       - ./.env
     volumes:
       - ./backend:/app
-    entrypoint: ["celery", "-A", "app.celery_app.celery_app", "worker", "--loglevel=INFO"]
+      - ia_shared_uploads:/tmp/uploads    # ⬅️ même chemin que backend
+    command: ["celery", "-A", "app.celery_app.celery_app", "worker", "--loglevel=INFO"]
     networks:
       - ia_network
     restart: unless-stopped
@@ -110,7 +111,7 @@ services:
       MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
       MONGO_INITDB_DATABASE: ${MONGO_DB_NAME}
     ports:
-      - "127.0.0.1:27017:27017" # exposé uniquement en local
+      - "127.0.0.1:27017:27017"
     networks:
       - ia_network
     restart: unless-stopped
@@ -137,10 +138,10 @@ services:
       sh -c "
         pip install --no-cache-dir -r requirements.txt &&
         pip install flower &&
-        celery -A app.tasks flower \
-          --port=5555 \
-          --broker=${REDIS_URL} \
-          --url_prefix=/flower \
+        celery -A app.celery_app.celery_app flower
+          --port=5555
+          --broker=${REDIS_URL}
+          --url_prefix=/flower
           --basic_auth=${FLOWER_USER}:${FLOWER_PASSWORD}
       "
     networks:
@@ -160,7 +161,7 @@ services:
       - HADOOP_NAMENODE_OPTS=-Dhadoop.rpc.socket.factory.class.default=org.apache.hadoop.net.StandardSocketFactory
     ports:
       - "9870:9870"
-      - "9001:9000"  # interne 9000, exposé 9001
+      - "9001:9000"
     volumes:
       - ia_hadoop_namenode:/hadoop/dfs/name
     networks:
@@ -222,6 +223,7 @@ volumes:
   ia_frontend_node_modules:
   ia_hadoop_namenode:
   ia_hadoop_datanode:
+  ia_shared_uploads:      # ⬅️ volume nommé pour les uploads partagés
 
 networks:
   ia_network:
