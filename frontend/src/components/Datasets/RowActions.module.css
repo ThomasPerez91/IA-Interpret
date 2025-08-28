@@ -1,0 +1,52 @@
+.trigger {
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 6px 8px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+}
+.dot {
+  width: 4px;
+  height: 4px;
+  border-radius: 999px;
+  background: #e5e7eb;
+  display: inline-block;
+}
+
+.menu {
+  position: fixed; /* <-- s'affiche hors du tableau, pas de clipping */
+  z-index: 9999;
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  padding: 6px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+
+.item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: #e5e7eb;
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+.item:hover {
+  background: rgba(148, 163, 184, 0.12);
+}
+.sep {
+  height: 1px;
+  background: rgba(148, 163, 184, 0.2);
+  margin: 4px 6px;
+}
+.danger {
+  color: #fecaca;
+}
+.danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+}

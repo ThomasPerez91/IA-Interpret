@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     # -------------------------
     # ⚠️ Aligne avec .env: CORS_ORIGINS_CSV=...
     cors_origins_csv: str = Field(
-        default="http://localhost:5173,http://localhost:8081",
+        default="http://localhost:5173,http://127.0.0.1:5173,http://localhost:8081,http://127.0.0.1:8081",
         env="CORS_ORIGINS_CSV",
     )
 
@@ -128,7 +128,7 @@ class Settings(BaseSettings):
         return None
 
     @property
-    def cors_origins(self) -> List[str]:
+    def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.cors_origins_csv.split(",") if o.strip()]
 
 
