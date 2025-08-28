@@ -1,115 +1,129 @@
-from typing import Dict, List
+# backend/app/services/spark_analyze.py
+from __future__ import annotations
+from typing import Any, Dict, List
 from pyspark.sql import SparkSession  # type: ignore
-from pyspark.sql.functions import col, when, count, trim, upper, approx_count_distinct  # type: ignore
+from pyspark.sql import functions as F  # type: ignore
+from pyspark.sql.types import StringType, StructField  # type: ignore
 
 
-def analyze_csv_local(local_csv_path: str) -> Dict:
-    """
-    Analyse un CSV (≤ ~20k lignes) avec Spark en local[*].
-    Renvoie: schéma, nulls, mal-typés, cardinalités, colonnes constantes, suggestions de prétraitements.
-    """
-    spark = (
+def _spark() -> SparkSession:
+    # Spark local pour l’analyse initiale
+    return (
         SparkSession.builder
-        .appName("IAInterpretCSVAnalysis")
-        .master("local[*]")     # simple et suffisant en dev
+        .appName("initial_analyze")
+        .master("local[*]")
         .getOrCreate()
     )
+
+
+def analyze_csv_local(local_path: str) -> Dict[str, Any]:
+    """
+    Retourne un dict JSON-serializable:
+      - row_count, column_count
+      - schema: [{name, dtype}]
+      - null_counts: {col -> int}
+      - bad_type_counts: {col -> int} (lignes non vides qui ne se castent pas)
+      - distinct_counts: {col -> int}
+      - constant_columns: [col]
+      - suggestions: [str]
+    """
+    spark = _spark()
     try:
+        # 1) Lecture typée (inferschema) pour connaître les types cibles
         df = (
             spark.read
             .option("header", True)
             .option("inferSchema", True)
-            .csv(local_csv_path)
+            .csv(local_path)
         )
-
         row_count = df.count()
-        column_names: List[str] = df.columns
 
-        # Schéma (nom + type)
-        schema = [{"name": f.name, "type": f.dataType.simpleString()}
-                  for f in df.schema.fields]
+        # Schema propre: [{name, dtype}]
+        schema: List[Dict[str, str]] = [
+            # ex: "string", "double", "integer"
+            {"name": f.name, "dtype": f.dataType.simpleString()}
+            for f in df.schema.fields  # type: ignore[assignment]
+        ]
+        column_count = len(schema)
 
-        # Null / vide / "NaN"
-        null_counts_row = df.select(
-            *[
-                count(
-                    when(
-                        col(c).isNull()
-                        | (trim(col(c)) == "")
-                        | (upper(trim(col(c))) == "NAN"),
-                        c,
-                    )
-                ).alias(c)
-                for c in column_names
-            ]
-        ).collect()[0]
-        null_counts = {c: int(null_counts_row[c]) for c in column_names}
-
-        # Mal-typés : non vides dont le cast vers le type inféré échoue
-        bad_type_counts: Dict[str, int] = {}
-        for f in df.schema.fields:
-            c = f.name
-            target = f.dataType
-            if f.dataType.simpleString() == "string":
-                bad_type_counts[c] = 0
-                continue
-            bad = (
-                df.filter(~(col(c).isNull() | (trim(col(c)) == "")
-                          | (upper(trim(col(c))) == "NAN")))
-                .filter(col(c).cast(target).isNull())
-                .count()
-            )
-            bad_type_counts[c] = int(bad)
-
-        # Cardinalité approx + colonnes constantes
-        approx_distinct = df.agg(
-            *[approx_count_distinct(col(c)).alias(c) for c in column_names]
-        ).collect()[0]
-        distinct_counts = {c: int(approx_distinct[c]) for c in column_names}
-        constant_columns = [c for c, d in distinct_counts.items() if d <= 1]
-
-        # Suggestions simples de prétraitements
-        suggestions = {}
-        for f in df.schema.fields:
-            c = f.name
-            dtype = f.dataType.simpleString()
-            miss_ratio = (null_counts[c] / row_count) if row_count > 0 else 0.0
-            sugg: List[str] = []
-
-            if c in constant_columns:
-                sugg.append("drop:colonne_constante")
-
-            if miss_ratio > 0:
-                if dtype in ("double", "float", "int", "bigint", "long"):
-                    sugg.append("impute:numeric_mean")
-                else:
-                    sugg.append("impute:categorical_mode")
-
-            if dtype == "string":
-                if distinct_counts[c] <= 30:
-                    sugg.append("encode:one_hot")
-                elif distinct_counts[c] <= 2000:
-                    sugg.append("encode:target_or_ordinal")
-                else:
-                    sugg.append("encode:hashing_trick")
+        # 2) Valeurs manquantes
+        # - pour les colonnes string: null OR "" OR "nan" (insensible à la casse)
+        # - pour les autres: null
+        null_counts: Dict[str, int] = {}
+        for f in df.schema.fields:  # type: ignore[assignment]
+            col = F.col(f.name)
+            if isinstance(f, StructField) and isinstance(f.dataType, StringType):
+                expr = F.when(
+                    col.isNull() | (F.length(F.trim(col)) == 0) | (F.lower(col) == "nan"),
+                    1
+                ).otherwise(0)
             else:
-                sugg.append("scale:standard_or_minmax")
+                expr = F.when(col.isNull(), 1).otherwise(0)
+            null_counts[f.name] = int(
+                df.select(F.sum(expr).alias("n")).collect()[0]["n"] or 0)
 
-            if miss_ratio >= 0.7:
-                sugg.append("consider_drop:missing_too_high")
+        # 3) Distinct + colonnes constantes
+        distinct_counts: Dict[str, int] = {}
+        constant_columns: List[str] = []
+        for f in df.schema.fields:  # type: ignore[assignment]
+            n = df.select(f.name).distinct().count()
+            distinct_counts[f.name] = int(n)
+            if n <= 1:
+                constant_columns.append(f.name)
 
-            if bad_type_counts.get(c, 0) > 0 and dtype != "string":
-                sugg.append("coerce_type:clean_and_cast")
+        # 4) Valeurs mal typées
+        # Relecture brute en "string" + tentative de cast vers le type inféré.
+        raw = (
+            spark.read
+            .option("header", True)
+            .option("inferSchema", False)  # => tout en string
+            .csv(local_path)
+        )
+        bad_type_counts: Dict[str, int] = {}
+        for f in df.schema.fields:  # type: ignore[assignment]
+            wanted = f.dataType
+            s = raw.select(F.col(f.name).alias("raw"))
+            casted = s.select(
+                F.when(
+                    F.col("raw").isNull() | (
+                        F.length(F.trim(F.col("raw"))) == 0),
+                    None,
+                ).otherwise(F.col("raw")).cast(wanted).alias("casted")
+            )
+            # "mal typée" = non vide côté brut, mais cast => null
+            bad = casted.filter(
+                F.col("casted").isNull()
+                & F.col("raw").isNotNull()
+                & (F.length(F.trim(F.col("raw"))) > 0)
+            ).count()
+            if bad > 0:
+                bad_type_counts[f.name] = int(bad)
 
-            suggestions[c] = sugg
+        # 5) Suggestions simples
+        suggestions: List[str] = []
+        if constant_columns:
+            suggestions.append(
+                f"Supprimer {len(constant_columns)} colonne(s) constante(s): "
+                + ", ".join(constant_columns[:5])
+                + ("…" if len(constant_columns) > 5 else "")
+            )
+        heavy_missing = [
+            c for c, n in null_counts.items() if row_count and (n / row_count) > 0.2
+        ]
+        if heavy_missing:
+            suggestions.append(
+                "Traiter les valeurs manquantes (>20%) pour: "
+                + ", ".join(heavy_missing[:5])
+                + ("…" if len(heavy_missing) > 5 else "")
+            )
 
         return {
             "row_count": int(row_count),
-            "column_count": len(column_names),
-            "schema": schema,
-            "null_counts": null_counts,
+            "column_count": int(column_count),
+            "schema": schema,  # ✅ [{name, dtype}]
+            "null_counts": {k: int(v) for k, v in null_counts.items()},
             "bad_type_counts": bad_type_counts,
-            "distinct_counts": distinct_counts,
+            "distinct_counts": {k: int(v) for k, v in distinct_counts.items()},
             "constant_columns": constant_columns,
             "suggestions": suggestions,
         }

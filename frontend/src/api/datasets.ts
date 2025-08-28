@@ -2,6 +2,7 @@ import type {
   DatasetListResponse,
   UploadResponse,
   StatusResponse,
+  DatasetDetail,
 } from "../types/datasets";
 
 const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:5001";
@@ -42,5 +43,28 @@ export async function getDatasetStatus(
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new Error(`getDatasetStatus failed: ${res.status}`);
+  return res.json();
+}
+
+export async function getDatasetDetail(
+  token: string,
+  datasetId: string
+): Promise<DatasetDetail> {
+  const res = await fetch(`${API_URL}/datasets/${datasetId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`getDatasetDetail failed: ${res.status}`);
+  return res.json();
+}
+
+export async function deleteDataset(
+  token: string,
+  datasetId: string
+): Promise<{ archived: boolean }> {
+  const res = await fetch(`${API_URL}/datasets/${datasetId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`deleteDataset failed: ${res.status}`);
   return res.json();
 }
