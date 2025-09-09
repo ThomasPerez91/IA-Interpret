@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { listDatasets, deleteDataset } from "../api/datasets";
 import type { DatasetInfo } from "../types/datasets";
@@ -6,11 +7,17 @@ import styles from "./css/Datasets.module.css";
 import { UploadModal } from "../components/Datasets/UploadModal";
 import { RowActions } from "../components/Datasets/RowActions";
 import { DatasetInfoModal } from "../components/Datasets/DatasetInfoModal";
-import { ConfirmModal } from "../components/common/ConfirmModal";
-import { statusLabel, stepLabel } from "../utils/labels";
+import {
+  statusLabel,
+  stepLabel,
+  statusClass,
+  stepClass,
+} from "../utils/labels";
 
 export const Datasets: React.FC = () => {
   const { token } = useAuth();
+  const navigate = useNavigate();
+
   const [items, setItems] = useState<DatasetInfo[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -18,10 +25,6 @@ export const Datasets: React.FC = () => {
 
   const [infoOpen, setInfoOpen] = useState(false);
   const [infoId, setInfoId] = useState<string | null>(null);
-
-  // état pour la modale de confirmation d’archivage
-  const [confirmOpen, setConfirmOpen] = useState(false);
-  const [pendingArchiveId, setPendingArchiveId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -43,35 +46,36 @@ export const Datasets: React.FC = () => {
     setInfoOpen(true);
   };
 
-  const askArchive = (id: string) => {
-    setPendingArchiveId(id);
-    setConfirmOpen(true);
-  };
+  const onArchive = async (id: string) => {
+    if (!token) return;
+    if (
+      !window.confirm(
+        "Archiver ce dataset ? Cela supprime aussi les données HDFS et l'analyse liée."
+      )
+    )
+      return;
 
-  const doArchive = async () => {
-    if (!token || !pendingArchiveId) return;
     try {
-      await deleteDataset(token, pendingArchiveId);
-      setConfirmOpen(false);
-      setPendingArchiveId(null);
+      await deleteDataset(token, id);
       await load();
     } catch (e: unknown) {
-      alert(e instanceof Error ? e.message : "Suppression échouée");
+      if (e instanceof Error) {
+        alert(e.message);
+      } else {
+        alert("Suppression échouée");
+      }
     }
   };
 
-  const closeConfirm = () => {
-    setConfirmOpen(false);
-    setPendingArchiveId(null);
+  const onNextStep = (id: string) => {
+    // redirection vers la page de plan de nettoyage
+    navigate(`/dashboard/datasets/${id}/cleaning`);
   };
-
-  const nameOf = (id: string) =>
-    items.find((x) => x.id === id)?.name ?? "ce dataset";
 
   return (
     <div className={styles.wrap}>
-      <div className={styles.head}>
-        <h2>Mes datasets</h2>
+      <div className={styles.headerRow}>
+        <h2 className={styles.title}>Mes datasets</h2>
         <button
           className={styles.uploadBtn}
           onClick={() => setOpenUpload(true)}
@@ -82,14 +86,13 @@ export const Datasets: React.FC = () => {
 
       <div className={styles.tableWrap}>
         <table className={styles.table}>
-          {/* élargit un peu la colonne “# Colonnes” */}
           <colgroup>
-            <col style={{ width: "38%" }} />
-            <col style={{ width: "16%" }} />
+            <col style={{ width: "42%" }} />
+            <col style={{ width: "14%" }} />
             <col style={{ width: "14%" }} />
             <col style={{ width: "16%" }} />
             <col style={{ width: "10%" }} />
-            <col style={{ width: "6%" }} />
+            <col style={{ width: "4%" }} />
           </colgroup>
           <thead>
             <tr>
@@ -101,6 +104,7 @@ export const Datasets: React.FC = () => {
               <th>Actions</th>
             </tr>
           </thead>
+
           <tbody>
             {loading ? (
               <tr>
@@ -121,22 +125,24 @@ export const Datasets: React.FC = () => {
                   <td>{d.row_count ?? "—"}</td>
                   <td>{d.column_count ?? "—"}</td>
                   <td>
-                    <span className={`${styles.badge} ${styles.step}`}>
-                      {stepLabel[d.step] ?? d.step}
+                    <span className={`${styles.badge} ${styles[stepClass()]}`}>
+                      {stepLabel[d.step]}
                     </span>
                   </td>
                   <td>
-                    <span className={`${styles.badge} ${styles[d.status]}`}>
-                      {statusLabel[d.status] ?? d.status}
+                    <span
+                      className={`${styles.badge} ${
+                        styles[statusClass(d.status)]
+                      }`}
+                    >
+                      {statusLabel[d.status]}
                     </span>
                   </td>
-                  <td>
+                  <td className={styles.actionsCell}>
                     <RowActions
                       onInfo={() => onOpenInfo(d.id)}
-                      onNextStep={() =>
-                        alert("Étape suivante bientôt disponible")
-                      }
-                      onArchive={() => askArchive(d.id)}
+                      onNextStep={() => onNextStep(d.id)}
+                      onArchive={() => void onArchive(d.id)}
                     />
                   </td>
                 </tr>
@@ -161,23 +167,9 @@ export const Datasets: React.FC = () => {
             setInfoOpen(false);
             setInfoId(null);
           }}
-          onGoNext={() => alert("Étape suivante bientôt disponible")}
+          onGoNext={() => onNextStep(infoId!)}
         />
       )}
-
-      <ConfirmModal
-        isOpen={confirmOpen}
-        title="Archiver le dataset"
-        message={`Tu es sur le point d’archiver « ${nameOf(
-          pendingArchiveId ?? ""
-        )} ». 
-Cela supprimera l’entrée en base **et** les fichiers associés dans HDFS. Cette action est définitive.`}
-        confirmText="Archiver"
-        cancelText="Annuler"
-        onConfirm={doArchive}
-        onClose={closeConfirm}
-        tone="danger"
-      />
     </div>
   );
 };

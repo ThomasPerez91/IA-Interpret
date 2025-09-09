@@ -12,6 +12,7 @@ import { Dashboard } from "./pages/Dashboard";
 import { Datasets } from "./pages/Datasets";
 import { Models } from "./pages/Models";
 import { Analyses } from "./pages/Analyses";
+import { CleaningPlan } from "./pages/CleaningPlan";
 
 import { PublicLayout } from "./layouts/PublicLayout";
 import { DashboardLayout } from "./layouts/DashboardLayout";
@@ -30,14 +31,14 @@ function App() {
     <div className={styles.app}>
       <main>
         <Routes>
-          {/* Routes publiques avec la HomeNavbar */}
+          {/* Public */}
           <Route element={<PublicLayout />}>
             <Route index element={<Home />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
           </Route>
 
-          {/* Espace Dashboard protégé, avec sa DashboardNavbar */}
+          {/* Dashboard protégé */}
           <Route
             path="/dashboard"
             element={
@@ -50,6 +51,8 @@ function App() {
             <Route path="datasets" element={<Datasets />} />
             <Route path="models" element={<Models />} />
             <Route path="analyses" element={<Analyses />} />
+            {/* ⬇️ Route ENFANT RELATIVE (pas de /dashboard en doublon) */}
+            <Route path="datasets/:id/cleaning" element={<CleaningPlan />} />
           </Route>
         </Routes>
       </main>

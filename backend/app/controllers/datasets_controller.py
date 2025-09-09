@@ -4,8 +4,8 @@ from enum import Enum
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile  # <-- Form !
-from bson import ObjectId
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile  # type: ignore
+from bson import ObjectId  # type: ignore
 
 from .. import db
 from ..config import settings
